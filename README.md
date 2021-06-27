@@ -1,8 +1,7 @@
 # Uso de Segmentação de Imagens para Identificação de Bifurcações em Vasos Sanguíneos em Imagens de Retina
 
-Daniel Sá Barretto Prado Garcia 10374344
-
-Alexandre Galocha Pinto Jr 10734706
+* Daniel Sá Barretto Prado Garcia 10374344
+* Alexandre Galocha Pinto Jr 10734706
 
 ## Resumo do projeto
 ### Objetivo
@@ -31,4 +30,21 @@ Exemplos de imagens de entrada podem ser vistos abaixo:
 ![](./images/4.jpg)
 
 ### Descrição das Etapas
+Algumas das etapas realizadas foram:
+1. Processamento inicial
+    * Inicialmente calculamos uma imagem que seria equivalente ao background da 
+    imagem, e subtraímos, afim de obter uma imagem resultado que trouxesse 
+    apenas os vasos sanguíneos (ou linhas no geral, por exemplo o contorno do 
+    olho);
+    * Depois realizamos uma equalização de histograma a fim de realçar os vasos
+    e destacá-los referente ao *noise* no fundo do olho;
 
+2. Segmentação
+    * Então foi realizada uma segmentação da imagem por meio de um threshold 
+    local, que visava trazer uma imagem mais pura, mostrando apenas os vasos, 
+    porém ainda existia bastante barulho;
+
+3. Pós-Processamento
+    * Foram realizadas operações morfológicas como abertura e erosão da imagem,
+    a fim de obter uma imagem com menos barulho e até então o processo se 
+    mostrou bastante promissor;
