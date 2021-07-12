@@ -16,6 +16,16 @@ import cv2
 
 
 def filter_img(img, kernel_size=3, filter_type="mean"):
+    """
+        Realiza a filtragem de uma imagem, utilizando um dos três filtros:
+        média, mediana ou gaussiano.
+
+        :param img: imagem a ser filtrada
+        :param kernel_size: tamanho do filtro (lado)
+        :param filter_type: tipo do filtro ("mean" | "median" | "gaussian")
+
+        :return: imagem filtrada com o filtro especificado
+    """
     if filter_type == "mean":
         weights = np.full((kernel_size, kernel_size), 1.0/(kernel_size**2))
         return convolve(img, weights=weights, mode="constant", cval=0)
@@ -32,6 +42,13 @@ def filter_img(img, kernel_size=3, filter_type="mean"):
 
 
 def calculate_background(opened_img):
+    """
+        Calcula o background de uma imagem, borrando, para perder os detalhes.
+
+        :param opened_img: imagem da qual será calculado o background
+
+        :return: background da imagem
+    """
     background = filter_img(opened_img, kernel_size=13, filter_type="mean")
     background = filter_img(background, kernel_size=15, filter_type="gaussian")
     background = filter_img(background, kernel_size=60, filter_type="median")
@@ -40,6 +57,14 @@ def calculate_background(opened_img):
 
 
 def pre_process(image):
+    """
+        Realiza o pré-processamento de uma imagem de exame de retina, removendo
+        o background e sombras/brilhos através de aberturas.
+
+        :param image: imagem do exame de retina a ser processada
+
+        :return: imagem com background removido e sombras/brilhos diminuídos
+    """
     image_g = image[:, :, 1].astype(np.uint8)
     image_g = opening(image_g, np.ones((13, 13)))
     background = calculate_background(image_g)
@@ -52,10 +77,33 @@ def pre_process(image):
 
 
 def process_threshold(diff_img):
-    return cv2.adaptiveThreshold(diff_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 41, 5)
+    """
+        Realiza a segmentação da imagem utilizando um threshold adaptativo.
+
+        :param diff_img: imagem já pré-processada, da qual será realizada a
+            segmentação
+
+        :return: imagem segmentada com threshold adaptativo
+    """
+    return cv2.adaptiveThreshold(diff_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, 41, 5)
 
 
 def remove_small_areas(img, min_area):
+    """
+        Segmenta uma imagem em várias regiões com propriedades em comum e gera
+        uma imagem resultado, deixando de fora todas as regiões que possuam
+        areas menores do que o limiar passado. Esse processo é realizado para
+        remover áreas pequenas (no geral barulho).
+        OBS: essa função foi inspirada no artigo que pode ser encontrado no
+        link abaixo (medium).
+
+        :param img: imagem a ser processada
+        :param min_area: area minima das regiões utilizadas nas geração da
+            imagem resultado
+
+        :return: imagem com as areas pequenas removidas
+    """
     # https://medium.com/swlh/image-processing-with-python-connected-components-and-region-labeling-3eef1864b951
     label_img = measure.label(img, background=0, connectivity=2)
     regions = measure.regionprops(label_img)
@@ -82,6 +130,19 @@ def remove_small_areas(img, min_area):
 
 
 def post_process(threshold_img):
+    """
+        Realiza o pós-processamento da imagem após a segmentação da mesma. A
+        realização do closing e opening (como explicado no relatório) são para
+        melhorar as ligações entre os vasos e remover parte do ruido,
+        respectivamente. Após esses operadores morfológicos, a função de remoção
+        de pequenas áreas é utilizada para remover o resto do barulho da imagem.
+        Além disso é gerado um esqueleto da imagem que será utilizado para
+        marcação de potenciais bifurcações e verificação do mesmo.
+
+        :param threshold_img: imagem já segmentada (binária)
+
+        :return: imagem com remoção de barulho e imagem esqueletizada
+    """
     threshold_img = opening(closing(threshold_img.astype(
         np.uint8), np.ones((7, 7))), np.ones((3, 3)))
     reduced_threshold = remove_small_areas(threshold_img, 150)
@@ -89,6 +150,16 @@ def post_process(threshold_img):
 
 
 def mark_potential_landmark(skeleton_img):
+    """
+        Realiza a marcação das potenciais bifurcações ou intersecções de vasos
+        na imagem. Isso é feito através da aplicação de uma máscara, buscando
+        pontos da imagem que possuam 3 (bifurcação) ou 4 (intersecção) linhas
+        saindo. A máscara utilizada é uma 3x3, que obteve um melhor resultado.
+
+        :param skeleton_img: imagem esqueletizada para marcação
+
+        :return: conjunto de potenciais pontos com bifurcações ou intersecções
+    """
     size = 3
     a = size//2
     mask = np.ones((size, size))
@@ -109,6 +180,17 @@ def mark_potential_landmark(skeleton_img):
 
 
 def calculate_widths(threshold_img, landmarks):
+    """
+        Calcula a largura dos vasos sanguíneos nos pontos de potenciais
+        bifurcação. Esse cálculo é feito pegando a menor distância percorrida
+        a partir do ponto em cada uma das direções (8 direções são utilizadas).
+        A função retorna o que seria equivalente ao raio do vasos em cada ponto.
+
+        :param threshold_img: imagem usada para calculo da largura dos vasos
+        :param landmarks: pontos onde calcular as larguras
+
+        :return: larguras de cada um dos pontos (raio dos vasos)
+    """
     widths = []
     for x, y, mark_type in landmarks:
         # down
@@ -174,6 +256,7 @@ def calculate_widths(threshold_img, landmarks):
             i += 1
             j -= 1
             p_diag_dist += 1
+
         min_width = np.min([vert_dist, horiz_dist, p_diag_dist, s_diag_dist])
         widths.append([(x, y), np.ceil(min_width).astype(int), mark_type])
     return widths
