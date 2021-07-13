@@ -7,7 +7,7 @@ Alunos:
 import imageio
 import numpy as np
 from scipy.ndimage.filters import median_filter, convolve
-from skimage.morphology import opening, skeletonize
+from skimage.morphology import opening, closing, skeletonize
 from skimage.filters import gaussian
 from skimage import measure
 import sys
@@ -16,6 +16,16 @@ import cv2
 
 
 def filter_img(img, kernel_size=3, filter_type="mean"):
+    """
+        Realiza a filtragem de uma imagem, utilizando um dos três filtros:
+        média, mediana ou gaussiano.
+
+        :param img: imagem a ser filtrada
+        :param kernel_size: tamanho do filtro (lado)
+        :param filter_type: tipo do filtro ("mean" | "median" | "gaussian")
+
+        :return: imagem filtrada com o filtro especificado
+    """
     if filter_type == "mean":
         weights = np.full((kernel_size, kernel_size), 1.0/(kernel_size**2))
         return convolve(img, weights=weights, mode="constant", cval=0)
@@ -32,14 +42,29 @@ def filter_img(img, kernel_size=3, filter_type="mean"):
 
 
 def calculate_background(opened_img):
+    """
+        Calcula o background de uma imagem, borrando, para perder os detalhes.
+
+        :param opened_img: imagem da qual será calculado o background
+
+        :return: background da imagem
+    """
     background = filter_img(opened_img, kernel_size=13, filter_type="mean")
     background = filter_img(background, kernel_size=15, filter_type="gaussian")
     background = filter_img(background, kernel_size=60, filter_type="median")
 
-    return background.astype(np.uint8)
+    return background
 
 
 def pre_process(image):
+    """
+        Realiza o pré-processamento de uma imagem de exame de retina, removendo
+        o background e sombras/brilhos através de aberturas.
+
+        :param image: imagem do exame de retina a ser processada
+
+        :return: imagem com background removido e sombras/brilhos diminuídos
+    """
     image_g = image[:, :, 1].astype(np.uint8)
     image_g = opening(image_g, np.ones((13, 13)))
     background = calculate_background(image_g)
@@ -52,14 +77,37 @@ def pre_process(image):
 
 
 def process_threshold(diff_img):
-    return cv2.adaptiveThreshold(diff_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 41, 5)
+    """
+        Realiza a segmentação da imagem utilizando um threshold adaptativo.
+
+        :param diff_img: imagem já pré-processada, da qual será realizada a
+            segmentação
+
+        :return: imagem segmentada com threshold adaptativo
+    """
+    return cv2.adaptiveThreshold(diff_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, 41, 5)
 
 
 def remove_small_areas(img, min_area):
+    """
+        Segmenta uma imagem em várias regiões com propriedades em comum e gera
+        uma imagem resultado, deixando de fora todas as regiões que possuam
+        areas menores do que o limiar passado. Esse processo é realizado para
+        remover áreas pequenas (no geral barulho).
+        OBS: essa função foi inspirada no artigo que pode ser encontrado no
+        link abaixo (medium).
+
+        :param img: imagem a ser processada
+        :param min_area: area minima das regiões utilizadas nas geração da
+            imagem resultado
+
+        :return: imagem com as areas pequenas removidas
+    """
+    # https://medium.com/swlh/image-processing-with-python-connected-components-and-region-labeling-3eef1864b951
     label_img = measure.label(img, background=0, connectivity=2)
     regions = measure.regionprops(label_img)
 
-    # https://medium.com/swlh/image-processing-with-python-connected-components-and-region-labeling-3eef1864b951
     masks = []
     bbox = []
     list_of_index = []
@@ -82,12 +130,36 @@ def remove_small_areas(img, min_area):
 
 
 def post_process(threshold_img):
-    threshold_img = opening(threshold_img.astype(np.uint8), np.ones((2, 2)))
+    """
+        Realiza o pós-processamento da imagem após a segmentação da mesma. A
+        realização do closing e opening (como explicado no relatório) são para
+        melhorar as ligações entre os vasos e remover parte do ruido,
+        respectivamente. Após esses operadores morfológicos, a função de remoção
+        de pequenas áreas é utilizada para remover o resto do barulho da imagem.
+        Além disso é gerado um esqueleto da imagem que será utilizado para
+        marcação de potenciais bifurcações e verificação do mesmo.
+
+        :param threshold_img: imagem já segmentada (binária)
+
+        :return: imagem com remoção de barulho e imagem esqueletizada
+    """
+    threshold_img = opening(closing(threshold_img.astype(
+        np.uint8), np.ones((7, 7))), np.ones((3, 3)))
     reduced_threshold = remove_small_areas(threshold_img, 150)
-    return skeletonize(reduced_threshold.astype(bool))
+    return reduced_threshold, skeletonize(reduced_threshold.astype(bool))
 
 
 def mark_potential_landmark(skeleton_img):
+    """
+        Realiza a marcação das potenciais bifurcações ou intersecções de vasos
+        na imagem. Isso é feito através da aplicação de uma máscara, buscando
+        pontos da imagem que possuam 3 (bifurcação) ou 4 (intersecção) linhas
+        saindo. A máscara utilizada é uma 3x3, que obteve um melhor resultado.
+
+        :param skeleton_img: imagem esqueletizada para marcação
+
+        :return: conjunto de potenciais pontos com bifurcações ou intersecções
+    """
     size = 3
     a = size//2
     mask = np.ones((size, size))
@@ -103,13 +175,24 @@ def mark_potential_landmark(skeleton_img):
         sub_img = skeleton_img[x-a:x+a+1, y-a:y+a+1]
         img_sum = np.sum(np.bitwise_and(sub_img, mask))
         if(img_sum == 3 or img_sum == 4):
-            landmarks.append((x, y))
+            landmarks.append((x, y, img_sum))
     return landmarks
 
 
 def calculate_widths(threshold_img, landmarks):
+    """
+        Calcula a largura dos vasos sanguíneos nos pontos de potenciais
+        bifurcação. Esse cálculo é feito pegando a menor distância percorrida
+        a partir do ponto em cada uma das direções (8 direções são utilizadas).
+        A função retorna o que seria equivalente ao raio do vasos em cada ponto.
+
+        :param threshold_img: imagem usada para calculo da largura dos vasos
+        :param landmarks: pontos onde calcular as larguras
+
+        :return: larguras de cada um dos pontos (raio dos vasos)
+    """
     widths = []
-    for x, y in landmarks:
+    for x, y, mark_type in landmarks:
         # down
         i = x
         j = y
@@ -173,49 +256,67 @@ def calculate_widths(threshold_img, landmarks):
             i += 1
             j -= 1
             p_diag_dist += 1
+
         min_width = np.min([vert_dist, horiz_dist, p_diag_dist, s_diag_dist])
-        widths.append([(x, y), min_width])
+        widths.append([(x, y), np.ceil(min_width).astype(int), mark_type])
     return widths
 
 
-def make_circle(radius):
-    d = int(2*radius+1)
-    rx, ry = d/2, d/2
-    x, y = np.indices((d, d))
-    return ((np.abs(np.hypot(rx-x, ry-y)-radius)) < 0.5).astype(np.uint8)
+def make_circle(diameter):
+    diameter += 2
+
+    radius = diameter // 2
+
+    circle = np.zeros((diameter, diameter)).astype(np.uint8)
+    c = radius
+    y, x = np.ogrid[-radius:radius, -radius:radius]
+    index = x ** 2 + y ** 2 < radius ** 2
+    circle[c - radius:c + radius, c - radius: c + radius][index] = 1
+
+    diameter_in = diameter - 2
+    radius_in = diameter_in // 2
+
+    inside = np.zeros((diameter, diameter)).astype(np.uint8)
+    c = radius
+    y, x = np.ogrid[-radius:radius, -radius:radius]
+    index = x ** 2 + y ** 2 < radius_in ** 2
+    inside[c - radius:c + radius, c - radius: c + radius][index] = 1
+
+    return np.bitwise_xor(circle, inside)[1:-1, 1:-1]
 
 
 def mark_intersections_and_intersections(widths, skeleton_img):
     bifurcations = []
     intersections = []
-    for (x, y), width in widths:
-        diam = 3*width
-        radius = diam//2
+    for (x, y), width, mark_type in widths:
+        diam = 3 * width
+        diam += 1 if diam % 2 == 0 else 0
+        radius = diam // 2
         if(x-radius < 0 or y-radius < 0 or x+radius+1 > skeleton_img.shape[0] or y+radius+1 > skeleton_img.shape[1]):
             continue
-        circle = make_circle(radius)
+        circle = make_circle(diam)
         sub_img = skeleton_img[x-radius:x+radius +
                                1, y-radius:y+radius+1].astype(bool)
         circle_sum = np.sum(np.bitwise_and(sub_img, circle))
-        if(circle_sum == 3):
+        if(circle_sum == 3 and mark_type == 3):
             bifurcations.append((x, y))
-        elif(circle_sum == 4):
+        elif(circle_sum == 4 and mark_type == 4):
             intersections.append((x, y))
     return bifurcations, intersections
 
 
 def draw_bifurcations(original_img, bifurcations, intersections):
-    final_img = original_img
+    final_img = original_img.copy()
     for (y, x) in bifurcations:
-        cv2.rectangle(original_img, (x-10, y-10), (x+10, y+10), (255, 0, 0), 2)
+        cv2.rectangle(final_img, (x-10, y-10), (x+10, y+10), (0, 0, 255), 2)
     for (y, x) in intersections:
-        cv2.rectangle(original_img, (x-10, y-10), (x+10, y+10), (0, 0, 255), 2)
+        cv2.rectangle(final_img, (x-10, y-10), (x+10, y+10), (0, 255, 0), 2)
     return final_img
 
 
-def calculate_bifurcations(skeleton, threshold_img, original_img):
+def calculate_bifurcations(skeleton, denoised, original_img):
     landmarks = mark_potential_landmark(skeleton)
-    junction_widths = calculate_widths(threshold_img, landmarks)
+    junction_widths = calculate_widths(denoised, landmarks)
     bifurcations, intersections = mark_intersections_and_intersections(
         junction_widths, skeleton)
     return draw_bifurcations(original_img, bifurcations, intersections)
@@ -230,8 +331,8 @@ def main():
     image = imageio.imread(image_path)
     diff_img = pre_process(image)
     threshold_img = process_threshold(diff_img)
-    skeleton = post_process(threshold_img)
-    final_img = calculate_bifurcations(skeleton, threshold_img, image)
+    denoised, skeleton = post_process(threshold_img)
+    final_img = calculate_bifurcations(skeleton, denoised, image)
     imageio.imwrite(image_path.split('.')[0]+"final.jpg", final_img)
 
 
