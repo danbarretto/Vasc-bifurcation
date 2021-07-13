@@ -40,3 +40,7 @@ Algumas das etapas realizadas foram:
     
     * Com auxílio da biblioteca *skimage*, foi possível identificar as regiões conectadas da imagem. Deste modo foi possível filtrar estas regiões pela área total e montar uma imagem com menos ruído. 
     * Foram realizadas operações morfológicas como abertura e erosão da imagem a fim de obter uma imagem com menos ruído, o que se mostrou bastante promissor, uma vez que removeu bastante ruído sem perca de muita informação dos vasos.
+
+Exemplo de imagem de saída
+![](images/2_expected.jpg)
+Na imagem acima, as bifurcações são marcadas com quadrados azuis e as intersecções de vasos são marcadas com quadrados vermelhos.
