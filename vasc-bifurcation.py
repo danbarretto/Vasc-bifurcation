@@ -184,20 +184,24 @@ def calculate_widths(threshold_img, landmarks):
         Calcula a largura dos vasos sanguíneos nos pontos de potenciais
         bifurcação. Esse cálculo é feito pegando a menor distância percorrida
         a partir do ponto em cada uma das direções (8 direções são utilizadas).
-        A função retorna o que seria equivalente ao raio do vasos em cada ponto.
+        A função retorna o que seria equivalente ao diametro do vasos em cada 
+        ponto.
 
-        :param threshold_img: imagem usada para calculo da largura dos vasos
+        :param threshold_img: imagem (binária) usada para calculo da largura dos 
+            vasos sanguíneos
         :param landmarks: pontos onde calcular as larguras
 
-        :return: larguras de cada um dos pontos (raio dos vasos)
+        :return: vetor com larguras de cada um dos pontos (diametro dos vasos)
     """
+    N, M = threshold_img.shape
+
     widths = []
     for x, y, mark_type in landmarks:
         # down
         i = x
         j = y
         vert_dist = 0
-        while(j < 1600 and threshold_img[i, j] != 0):
+        while(j < M and threshold_img[i, j] != 0):
             vert_dist += 1
             j += 1
 
@@ -212,7 +216,7 @@ def calculate_widths(threshold_img, landmarks):
         horiz_dist = 0
         i = x
         j = y
-        while(i < 1600 and threshold_img[i, j] != 0):
+        while(i < N and threshold_img[i, j] != 0):
             horiz_dist += 1
             i += 1
 
@@ -227,7 +231,7 @@ def calculate_widths(threshold_img, landmarks):
         i = x
         j = y
         s_diag_dist = 0
-        while(i < 1600 and j < 1600 and threshold_img[i, j] != 0):
+        while(i < N and j < M and threshold_img[i, j] != 0):
             i += 1
             j += 1
             s_diag_dist += 1
@@ -244,7 +248,7 @@ def calculate_widths(threshold_img, landmarks):
         i = x
         j = y
         p_diag_dist = 0
-        while(i >= 0 and j < 1600 and threshold_img[i, j] != 0):
+        while(i >= 0 and j < M and threshold_img[i, j] != 0):
             i -= 1
             j += 1
             p_diag_dist += 1
@@ -252,7 +256,7 @@ def calculate_widths(threshold_img, landmarks):
         # up right
         i = x
         j = y
-        while(i < 1600 and j >= 0 and threshold_img[i, j] != 0):
+        while(i < N and j >= 0 and threshold_img[i, j] != 0):
             i += 1
             j -= 1
             p_diag_dist += 1
@@ -263,6 +267,14 @@ def calculate_widths(threshold_img, landmarks):
 
 
 def make_circle(diameter):
+    """
+        Cria uma máscara circular (circulo vazio, apenas a borda) de acordo com
+        o diâmetro escolhido.
+
+        :param diameter: diametro do circulo
+
+        :return: matriz diametro X diametro com o circulo desenhado
+    """
     diameter += 2
 
     radius = diameter // 2
@@ -286,6 +298,20 @@ def make_circle(diameter):
 
 
 def mark_intersections_and_intersections(widths, skeleton_img):
+    """
+        Marca as intersecções e bifurcações verificando se de fato existem por
+        meio das larguras de cada vaso sanguíneo calculadas. O processo é de
+        desenhar um circulo com raio 1.5 vezes a largura do vaso em cada um dos
+        pontos candidatos e verificar se existe o número certo de intersecções
+        (no caso de bifurcações são 3 e intersecções, 4) entre o circulo e os
+        traços definidos na imagem esqueletizada.
+
+        :param widths: vetor com as larguras em cada um dos pontos
+        :param skeleton_img: imagem esqueletizada para verificação
+
+        :return: vetor com os pontos de bifurcação e vetor com os pontos de
+            intersecção.
+    """
     bifurcations = []
     intersections = []
     for (x, y), width, mark_type in widths:
@@ -306,6 +332,18 @@ def mark_intersections_and_intersections(widths, skeleton_img):
 
 
 def draw_bifurcations(original_img, bifurcations, intersections):
+    """
+        Recebe os pontos em que existem bifurcações e intersecções nos vasos e
+        os desenha na imagem passada. As marcações são feitas por quadrados com
+        lado 20 pixels. Os quadrados azuis representam bifurcações, enquanto os
+        verdes representam as intersecções.
+
+        :param original_img: imagem original do exame de retina para marcação
+        :param bifurcations: vetor com os pontos de bifurcação
+        :param intersections: vetor com os pontos de intersecção
+
+        :return: imagem com os pontos marcados
+    """
     final_img = original_img.copy()
     for (y, x) in bifurcations:
         cv2.rectangle(final_img, (x-10, y-10), (x+10, y+10), (0, 0, 255), 2)
@@ -315,6 +353,23 @@ def draw_bifurcations(original_img, bifurcations, intersections):
 
 
 def calculate_bifurcations(skeleton, denoised, original_img):
+    """
+        Realiza o processo de calculo e marcação das bifurcações e intersecções
+        presentes em um exame de retina. O processo utiliza o esqueleto da
+        imagem para gerar pontos candidatos. Então verifica se os candidatos são
+        de fato os pontos procurados se utilizando da largura calculada dos
+        vasos sanguíneos em cada um desses pontos. Então, utilizando esses
+        resultados, são desenhados os pontos na imagem.
+
+        :param skeleton: imagem esqueletizada utilizada no calculo das
+            bifurcações e intersecções
+        :param denoised: imagem binária com os vasos, para calculo das larguras
+        :param original_img: imagem original sobre a qual serão desenhados os
+            pontos de bifurcação e intersecção
+
+        :return: imagem com bifurcações e intersecções marcadas em azul e verde
+            respectivamente
+    """
     landmarks = mark_potential_landmark(skeleton)
     junction_widths = calculate_widths(denoised, landmarks)
     bifurcations, intersections = mark_intersections_and_intersections(
@@ -323,17 +378,23 @@ def calculate_bifurcations(skeleton, denoised, original_img):
 
 
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) != 2:
         print("Image path must be provided")
+        print("Usage: python3 vasc_bifurcation.py <image_path>")
         return
 
-    image_path = str(sys.argv[1])
-    image = imageio.imread(image_path)
-    diff_img = pre_process(image)
-    threshold_img = process_threshold(diff_img)
-    denoised, skeleton = post_process(threshold_img)
-    final_img = calculate_bifurcations(skeleton, denoised, image)
-    imageio.imwrite(image_path.split('.')[0]+"final.jpg", final_img)
+    try:
+        image_path = str(sys.argv[1])
+        image = imageio.imread(image_path)
+        diff_img = pre_process(image)
+        threshold_img = process_threshold(diff_img)
+        denoised, skeleton = post_process(threshold_img)
+        final_img = calculate_bifurcations(skeleton, denoised, image)
+        imageio.imwrite(image_path.split('.')[0]+"final.jpg", final_img)
+    except FileNotFoundError:
+        print(f"File '{image_path}' not found")
+    except:
+        print("Runtime error.")
 
 
 if __name__ == "__main__":
