@@ -297,7 +297,7 @@ def make_circle(diameter):
     return np.bitwise_xor(circle, inside)[1:-1, 1:-1]
 
 
-def mark_intersections_and_intersections(widths, skeleton_img):
+def validate_bifurcations_and_intersections(widths, skeleton_img):
     """
         Marca as intersecções e bifurcações verificando se de fato existem por
         meio das larguras de cada vaso sanguíneo calculadas. O processo é de
@@ -372,7 +372,7 @@ def calculate_bifurcations(skeleton, denoised, original_img):
     """
     landmarks = mark_potential_landmark(skeleton)
     junction_widths = calculate_widths(denoised, landmarks)
-    bifurcations, intersections = mark_intersections_and_intersections(
+    bifurcations, intersections = validate_bifurcations_and_intersections(
         junction_widths, skeleton)
     return draw_bifurcations(original_img, bifurcations, intersections)
 
