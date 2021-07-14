@@ -390,7 +390,7 @@ def main():
         threshold_img = process_threshold(diff_img)
         denoised, skeleton = post_process(threshold_img)
         final_img = calculate_bifurcations(skeleton, denoised, image)
-        imageio.imwrite(image_path.split('.')[0]+"final.jpg", final_img)
+        imageio.imwrite(image_path.split('.')[0]+"_calculated.jpg", final_img)
     except FileNotFoundError:
         print(f"File '{image_path}' not found")
     except:
