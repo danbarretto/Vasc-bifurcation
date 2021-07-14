@@ -9,12 +9,12 @@ O projeto busca identificar bifurcações de vasos sanguíneos em imagens de exa
 de retina para auxiliar o diagnóstico de doenças como glaucoma e diabetes. A
 ideia principal é processar as imagens de exames de retina para obter imagens
 com maior facilidade de identificação de bifurcação nos vasos sanguíneos e a 
-partir dessas imagens processadas, calcular as bifurcações. Também serão calculadas
+partir dessas imagens processadas, calcular as bifurcações. Também são calculadas
 intersecções como resultado dos cálculos realizados e devido a facilidade de detecção.
 
 ### Métodos a serem utilizados
-O projeto utilizará segmentação de imagem para identificar os vasos sanguíneos e, em seguida, suas bifurcações. Também serão utilizadas técnicas de filtragem e morfológicas para remoção de ruído e correção de cores e sombras. 
-Os métodos são bem melhor especificados no notebook, onde existem descrições acima de cada bloco de código.
+O projeto utiliza segmentação de imagem para identificar os vasos sanguíneos e, em seguida, suas bifurcações. Também são utilizadas técnicas de filtragem e morfológicas para remoção de ruído e correção de cores e sombras. 
+Os métodos são melhores especificados no notebook, onde existem descrições acima de cada bloco de código.
 
 ### Exemplos de imagens a serem utilizadas
 As imagens utilizadas como entrada para o processamento são de exames de retina
@@ -43,7 +43,7 @@ Algumas das etapas realizadas foram:
     * Com auxílio da biblioteca *skimage*, foi possível identificar as regiões conectadas da imagem. Deste modo foi possível filtrar estas regiões pela área total e montar uma imagem com menos ruído. 
     * Foi gerada uma esqueletização da imagem para mais fácil identificação dos vasos.
 4. Identificação das Bifurcações
-    * Foram calculados vários pontos candidatos a serem bifurcações com dados da vizinhança de cada pixel do esqueleto. Quando existiam 3 pixels brancos, era um candidato a bifurcação; quando existiam 4, intersecção.
+    * Foram calculados vários pontos candidatos a serem bifurcações com dados da vizinhança de cada pixel do esqueleto. Um ponto é classificado como bifurcação quando existem 3 pontos na intersecção entre vizinhança e máscara e é classificado como intersecção quando existem 4 pontos na intersecção calculada.
     * Foram utilizadas as larguras de cada um dos vasos sanguíneos para verificar os candidatos
         * Era gerado em cada ponto um circulo de raio 1.5*L (L sendo a largura calculada);
         * Caso o circulo intersecte com o esqueleto em 3 pontos, é uma bifurcação; caso em 4, intersecção; caso contrário, não é nenhum dos dois.
